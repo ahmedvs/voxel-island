@@ -1,0 +1,827 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>جزيرة الفوكسل — معمار الفوكسل التفاعلي ثلاثي الأبعاد</title>
+    <meta
+      name="description"
+      content="منصة تفاعلية ثلاثية الأبعاد لبناء جزيرة فوكسل عائمة باستخدام الذكاء الاصطناعي وتقنية Three.js."
+    />
+    <meta property="og:title" content="جزيرة الفوكسل — معمار الفوكسل التفاعلي" />
+    <meta
+      property="og:description"
+      content="صمّم وابنِ مبانٍ ومعالم ثلاثية الأبعاد من الفوكسل على جزيرة عائمة حية."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="/css/styles.css" />
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body data-state="ready" data-camera-mode="orbit" data-auth="welcome">
+    <!-- Full-Viewport 3D Canvas Mount -->
+    <div
+      id="canvas-container"
+      data-testid="voxel-canvas-container"
+      aria-label="مشهد جزيرة الفوكسل ثلاثي الأبعاد"
+    ></div>
+
+    <!-- Top Floating Material 3 Frosted Pill Bar -->
+    <header class="top-bar m3-surface" role="banner">
+      <div class="brand-zone">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M12 2L20 6.5V15.5L12 20L4 15.5V6.5L12 2Z"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M12 20V11M12 11L20 6.5M12 11L4 6.5"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+        <div class="brand-text-group">
+          <h1 class="brand-title">جزيرة الفوكسل</h1>
+          <span
+            id="model-badge"
+            class="model-badge"
+            data-testid="model-badge"
+            dir="ltr"
+            title="النموذج النشط لتوليد مجسمات الفوكسل عبر الخادم"
+          >
+            Powered by <strong id="model-badge-id" data-testid="model-badge-id">gemini-4-hydrogen</strong>
+          </span>
+        </div>
+      </div>
+
+      <div class="stats-zone" aria-label="إحصائيات الجزيرة">
+        <div class="stat-item">
+          <span class="stat-label">المباني</span>
+          <span class="stat-value tabular-nums" id="stat-buildings" data-testid="stat-buildings">0</span>
+        </div>
+        <span class="stat-sep" aria-hidden="true">·</span>
+        <div class="stat-item">
+          <span class="stat-label">الفوكسلات</span>
+          <span class="stat-value tabular-nums" id="stat-voxels" data-testid="stat-voxels">0</span>
+        </div>
+        <span class="stat-sep" aria-hidden="true">·</span>
+        <div class="stat-item">
+          <span class="stat-label">الحيوية</span>
+          <span class="stat-value tabular-nums" id="stat-vitality" data-testid="stat-vitality">18%</span>
+        </div>
+      </div>
+
+      <div class="actions-zone">
+        <button
+          type="button"
+          id="btn-center-island"
+          class="btn-pill-ghost"
+          aria-label="العودة للمركز"
+          title="العودة إلى مركز الجزيرة"
+          data-testid="btn-center-island"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <circle cx="12" cy="12" r="2.5" />
+            <line x1="12" y1="3" x2="12" y2="6" />
+            <line x1="12" y1="18" x2="12" y2="21" />
+            <line x1="3" y1="12" x2="6" y2="12" />
+            <line x1="18" y1="12" x2="21" y2="12" />
+          </svg>
+          <span class="btn-text-desktop">العودة للمركز</span>
+        </button>
+
+        <button
+          type="button"
+          id="btn-reset-camera"
+          class="btn-pill-ghost"
+          aria-label="إعادة ضبط الكاميرا"
+          title="إعادة ضبط زاوية الكاميرا"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
+          <span class="btn-text-desktop">منظور</span>
+        </button>
+
+        <button
+          type="button"
+          id="btn-export"
+          class="btn-pill-ghost"
+          aria-label="تصدير الجزيرة بصيغة JSON"
+          title="تصدير نسخة احتياطية"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          <span class="btn-text-desktop">تصدير</span>
+        </button>
+
+        <button
+          type="button"
+          id="btn-import"
+          class="btn-pill-ghost"
+          aria-label="استيراد جزيرة من ملف JSON"
+          title="استيراد ملف جزيرة"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          <span class="btn-text-desktop">استيراد</span>
+        </button>
+        <input
+          type="file"
+          id="input-import-file"
+          accept="application/json,.json"
+          class="sr-only"
+          tabindex="-1"
+          aria-hidden="true"
+        />
+
+        <button
+          type="button"
+          id="btn-invite"
+          class="btn-pill-ghost"
+          aria-label="دعوة أصدقاء (Invite)"
+          aria-expanded="false"
+          aria-controls="invite-popover"
+          title="دعوة أصدقاء للانضمام إلى الجزيرة"
+          data-testid="btn-invite"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="18" cy="5" r="3" />
+            <circle cx="6" cy="12" r="3" />
+            <circle cx="18" cy="19" r="3" />
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+          </svg>
+          <span class="btn-text-desktop">دعوة أصدقاء</span>
+        </button>
+
+        <button
+          type="button"
+          id="btn-settings"
+          class="btn-pill-dark-soft"
+          aria-label="إعدادات الذكاء الاصطناعي والنموذج"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+          <span class="btn-text-desktop">الإعدادات</span>
+        </button>
+        <div class="user-profile-pill" id="user-profile-pill" data-testid="user-profile-pill">
+          <span class="user-badge-dot" id="user-badge-dot" aria-hidden="true"></span>
+          <span class="user-badge-name" id="user-badge-name" data-testid="user-badge-name">المستكشف</span>
+          <button
+            type="button"
+            id="btn-logout"
+            class="btn-logout-pill"
+            aria-label="تسجيل الخروج"
+            title="تسجيل الخروج والعودة لشاشة الدخول"
+            data-testid="btn-logout"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            <span class="btn-text-desktop">تسجيل الخروج</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Viral Invite Link Share Popover -->
+    <section
+      id="invite-popover"
+      class="invite-popover m3-card hidden"
+      role="dialog"
+      aria-label="مشاركة رابط دعوة الأصدقاء"
+      data-testid="invite-popover"
+    >
+      <div class="character-popover-header">
+        <div>
+          <h2 class="character-popover-title">دعوة الأصدقاء للجزيرة</h2>
+          <p class="character-popover-sub">
+            ينضم أصدقاؤك مباشرة عند مقهى الفوكسل مع صوت محيطي ثلاثي الأبعاد
+          </p>
+        </div>
+        <button
+          type="button"
+          id="btn-close-invite"
+          class="btn-icon-sm"
+          aria-label="إغلاق نافذة الدعوة"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="invite-url-box">
+        <label for="invite-url-input" class="sr-only">رابط الدعوة</label>
+        <input
+          type="text"
+          id="invite-url-input"
+          class="invite-url-input"
+          readonly
+          dir="ltr"
+          data-testid="invite-url-input"
+        />
+        <button
+          type="button"
+          id="btn-copy-invite"
+          class="btn-build-primary btn-copy-invite"
+          data-testid="btn-copy-invite"
+        >
+          نسخ الرابط
+        </button>
+      </div>
+
+      <div class="invite-share-row">
+        <a
+          id="invite-share-whatsapp"
+          class="invite-share-pill"
+          href="#"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="invite-share-whatsapp"
+        >
+          مشاركة عبر واتساب
+        </a>
+        <a
+          id="invite-share-x"
+          class="invite-share-pill"
+          href="#"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="invite-share-x"
+        >
+          مشاركة عبر X
+        </a>
+      </div>
+    </section>
+
+    <!-- Floating Sit Prompt Pill (Shown near Cafe chairs/benches) -->
+    <button
+      type="button"
+      id="sit-prompt-pill"
+      class="sit-prompt-pill m3-surface hidden"
+      data-testid="sit-prompt-pill"
+    >
+      اضغط [E] أو انقر للجلوس (Sit)
+    </button>
+
+    <!-- Walk Mode Top Hint Pill -->
+    <div
+      id="walk-hint-pill"
+      class="walk-hint-pill m3-surface hidden"
+      role="status"
+      data-testid="walk-hint-pill"
+    >
+      <span>استخدم الأسهم أو WASD للمشي، Space للقفز، واسحب بالماوس لتدوير الكاميرا</span>
+    </div>
+
+    <!-- Side Inspection Card -->
+    <aside
+      id="inspection-card"
+      class="inspection-card m3-card hidden"
+      role="region"
+      aria-label="تفاصيل المبنى المختار"
+      data-testid="inspection-card"
+    >
+      <div class="inspection-header">
+        <h2 class="inspection-title" id="inspect-prompt">عنوان المبنى</h2>
+        <button
+          type="button"
+          id="btn-close-inspect"
+          class="btn-icon-sm"
+          aria-label="إغلاق بطاقة التفاصيل"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="inspection-meta">
+        <span id="inspect-voxels" class="tabular-nums">0 فوكسل</span>
+        <span aria-hidden="true">·</span>
+        <span id="inspect-date">—</span>
+        <span aria-hidden="true">·</span>
+        <span id="inspect-coords" class="tabular-nums" dir="ltr">(0, 0)</span>
+      </div>
+
+      <p class="inspection-note" id="inspect-source">بناء تفاعلي على الجزيرة</p>
+
+      <div class="inspection-actions">
+        <button
+          type="button"
+          id="btn-like-building"
+          class="btn-like"
+          aria-pressed="false"
+          data-testid="btn-like-building"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+          </svg>
+          <span>إعجاب</span>
+          <span class="like-count tabular-nums" id="inspect-likes" data-testid="inspect-likes">0</span>
+        </button>
+
+        <button
+          type="button"
+          id="btn-focus-building"
+          class="btn-pill-ghost"
+          aria-label="التركيز على المبنى"
+        >
+          تركيز
+        </button>
+
+        <button
+          type="button"
+          id="btn-delete-building"
+          class="btn-danger-pill"
+          aria-label="إزالة هذا المبنى"
+        >
+          حذف
+        </button>
+      </div>
+    </aside>
+
+    <!-- Bottom Floating Material 3 Pill Controls (Camera Modes + Prominent + Add Button) -->
+    <div id="bottom-pill-dock" class="bottom-pill-dock" data-testid="bottom-pill-dock">
+      <div
+        class="camera-mode-pill m3-surface"
+        role="group"
+        aria-label="أوضاع الكاميرا"
+        data-testid="camera-mode-group"
+      >
+        <button
+          type="button"
+          class="mode-btn"
+          id="btn-mode-pan"
+          data-camera-mode="pan"
+          aria-pressed="false"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="5 9 2 12 5 15" />
+            <polyline points="9 5 12 2 15 5" />
+            <polyline points="15 19 12 22 9 19" />
+            <polyline points="19 9 22 12 19 15" />
+            <line x1="2" y1="12" x2="22" y2="12" />
+            <line x1="12" y1="2" x2="12" y2="22" />
+          </svg>
+          <span>تحريك</span>
+        </button>
+
+        <button
+          type="button"
+          class="mode-btn active"
+          id="btn-mode-orbit"
+          data-camera-mode="orbit"
+          aria-pressed="true"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <ellipse cx="12" cy="12" rx="9" ry="3.5" />
+          </svg>
+          <span>تدوير</span>
+        </button>
+
+        <button
+          type="button"
+          class="mode-btn"
+          id="btn-mode-walk"
+          data-camera-mode="walk"
+          aria-pressed="false"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="13" cy="4.5" r="2" />
+            <path d="M13 8.5l-2.5 5 3 2.5v5.5" />
+            <path d="M10.5 13.5L8 19" />
+            <path d="M8.5 11l3-2.5 3.5 2.5" />
+          </svg>
+          <span>مشي</span>
+        </button>
+      </div>
+
+      <button
+        type="button"
+        id="btn-character"
+        class="btn-character-pill m3-surface"
+        aria-expanded="false"
+        aria-controls="character-popover"
+        data-testid="btn-character"
+      >
+        <span class="character-pill-swatch" id="character-pill-swatch" aria-hidden="true"></span>
+        <span>الشخصية</span>
+      </button>
+
+      <div class="audio-pill-group m3-surface" id="audio-pill-group" data-testid="audio-pill-group">
+        <button
+          type="button"
+          id="btn-mic"
+          class="btn-mic-pill"
+          aria-pressed="false"
+          aria-label="الميكروفون والدردشة الصوتية المحيطية"
+          data-testid="btn-mic"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <line x1="12" y1="19" x2="12" y2="22" />
+          </svg>
+          <span>الميكروفون</span>
+        </button>
+        <button
+          type="button"
+          id="btn-audio-popover"
+          class="btn-audio-settings"
+          aria-expanded="false"
+          aria-controls="audio-popover"
+          aria-label="إعدادات واختبار الصوت المحيطي"
+          title="اختبار الميكروفون وإعدادات الصوت المحيطي"
+          data-testid="btn-audio-popover"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="18 15 12 9 6 15" />
+          </svg>
+        </button>
+      </div>
+
+      <button
+        type="button"
+        id="btn-add-structure"
+        class="btn-add-pill"
+        data-testid="btn-add-structure"
+      >
+        <span aria-hidden="true">+</span>
+        <span>إضافة مجسم</span>
+      </button>
+    </div>
+
+    <!-- Character Selector & Color Customization Popover -->
+    <section
+      id="character-popover"
+      class="character-popover m3-card hidden"
+      role="dialog"
+      aria-label="اختيار وتخصيص الشخصية"
+      data-testid="character-popover"
+    >
+      <div class="character-popover-header">
+        <div>
+          <h2 class="character-popover-title">الشخصية والمظهر</h2>
+          <p class="character-popover-sub">اختر شخصيتك وخصّص ألوانها أثناء استكشاف الجزيرة</p>
+        </div>
+        <button
+          type="button"
+          id="btn-close-character"
+          class="btn-icon-sm"
+          aria-label="إغلاق نافذة الشخصية"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="character-presets-grid" id="character-presets-grid" role="radiogroup" aria-label="الشخصيات الجاهزة"></div>
+
+      <div class="character-swatches-row">
+        <div class="swatch-group">
+          <span class="swatch-label">لون البشرة</span>
+          <div class="swatch-list" id="skin-swatches" role="radiogroup" aria-label="لون البشرة"></div>
+        </div>
+        <div class="swatch-group">
+          <span class="swatch-label">لون الملابس</span>
+          <div class="swatch-list" id="outfit-swatches" role="radiogroup" aria-label="لون الملابس"></div>
+        </div>
+        <div class="swatch-group">
+          <span class="swatch-label">لون الشعر والقبعة</span>
+          <div class="swatch-list" id="hairhat-swatches" role="radiogroup" aria-label="لون الشعر والقبعة"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Spatial Audio & Local Mic Test Popover -->
+    <section
+      id="audio-popover"
+      class="audio-popover m3-card hidden"
+      role="dialog"
+      aria-label="إعدادات الدردشة الصوتية المحيطية"
+      data-testid="audio-popover"
+    >
+      <div class="character-popover-header">
+        <div>
+          <h2 class="character-popover-title">الدردشة الصوتية المحيطية (3D)</h2>
+          <p class="character-popover-sub">
+            صوت واضح ضمن ١٥ فوكسل، يتلاشى تدريجياً حتى ٤٥ فوكسل في كل أنحاء الجزيرة
+          </p>
+        </div>
+        <button
+          type="button"
+          id="btn-close-audio"
+          class="btn-icon-sm"
+          aria-label="إغلاق نافذة الصوت"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="mic-meter-wrap">
+        <div class="mic-meter-head">
+          <span class="swatch-label">مستوى الميكروفون</span>
+          <span id="mic-status-label" class="mic-status-label" data-testid="mic-status-label">مغلق</span>
+        </div>
+        <div class="mic-level-track" aria-hidden="true">
+          <div id="mic-level-fill" class="mic-level-fill"></div>
+        </div>
+      </div>
+
+      <div class="audio-popover-actions">
+        <button
+          type="button"
+          id="btn-mic-test"
+          class="btn-pill-ghost"
+          aria-pressed="false"
+          data-testid="btn-mic-test"
+        >
+          اختبار الميكروفون
+        </button>
+        <button
+          type="button"
+          id="btn-spatial-chime"
+          class="btn-pill-dark-soft"
+          data-testid="btn-spatial-chime"
+        >
+          تجربة الصوت المحيطي
+        </button>
+      </div>
+    </section>
+
+    <!-- Bottom Floating Prompt Bar (Shown when a plot is selected or + إضافة مجسم is clicked) -->
+    <section
+      id="prompt-dock"
+      class="prompt-dock m3-card hidden"
+      role="region"
+      aria-label="شريط أوامر البناء"
+      data-testid="prompt-dock"
+    >
+      <div class="prompt-dock-top">
+        <div class="plot-info">
+          <span class="plot-label">موقع البناء المحدد</span>
+          <span class="plot-coords tabular-nums" id="selected-plot-coords" dir="ltr">(0, 0)</span>
+        </div>
+
+        <div class="quick-ideas" aria-label="أفكار سريعة للبناء">
+          <button type="button" class="idea-btn" data-prompt="منارة بحرية">منارة بحرية</button>
+          <button type="button" class="idea-btn" data-prompt="بيت خشبي ريفي">بيت خشبي ريفي</button>
+          <button type="button" class="idea-btn" data-prompt="شجرة كرز">شجرة كرز</button>
+          <button type="button" class="idea-btn" data-prompt="طاحونة هواء">طاحونة هواء</button>
+        </div>
+
+        <button
+          type="button"
+          id="btn-cancel-plot"
+          class="btn-icon-sm"
+          aria-label="إلغاء تحديد الموقع"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <form id="build-form" class="build-form" novalidate>
+        <label for="build-prompt-input" class="sr-only">ماذا تريد أن تبني؟</label>
+        <input
+          type="text"
+          id="build-prompt-input"
+          class="prompt-input"
+          placeholder="صف ما تريد بناءه... مثل: منارة بحرية، بيت خشبي ريفي، شجرة كرز"
+          maxlength="140"
+          autocomplete="off"
+        />
+        <div class="build-form-buttons">
+          <button
+            type="submit"
+            id="btn-start-build"
+            class="btn-build-primary"
+            data-testid="btn-start-build"
+          >
+            ابدأ البناء
+          </button>
+          <button
+            type="button"
+            id="btn-demo-build"
+            class="btn-demo"
+            data-testid="btn-demo-build"
+            title="اختبار البناء الفوري بدون مفتاح API"
+          >
+            بناء تجريبي
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Settings Modal (Model Selection — Server-Side Gemini) -->
+    <div
+      id="settings-modal"
+      class="modal-backdrop hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-modal-title"
+      data-testid="settings-modal"
+    >
+      <div class="modal-card m3-card">
+        <div class="modal-header">
+          <h2 id="settings-modal-title" class="modal-title">إعدادات الذكاء الاصطناعي</h2>
+          <button
+            type="button"
+            id="btn-close-settings"
+            class="btn-icon-sm"
+            aria-label="إغلاق نافذة الإعدادات"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <form id="settings-form" class="modal-body" novalidate>
+          <p class="modal-desc">
+            تعمل طلبات التصميم المعماري بالذكاء الاصطناعي عبر الخادم تلقائياً لجميع الزوار. يمكنك اختيار معرّف نموذج Gemini أو استخدام «بناء تجريبي» في أي وقت.
+          </p>
+
+          <div class="form-field">
+            <label for="input-model-id" class="field-label">معرّف النموذج (Model ID)</label>
+            <input
+              type="text"
+              id="input-model-id"
+              class="field-input"
+              dir="ltr"
+              value="gemini-4-hydrogen"
+              placeholder="gemini-4-hydrogen"
+              autocomplete="off"
+            />
+            <span class="field-hint">الافتراضي: gemini-4-hydrogen (يدعم أيضاً hydrogen أو gemini-3.1-flash-lite)</span>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" id="btn-reset-model" class="btn-pill-ghost">استعادة الافتراضي</button>
+            <div class="modal-footer-end">
+              <button type="button" id="btn-cancel-settings" class="btn-pill-ghost">إلغاء</button>
+              <button type="submit" id="btn-save-settings" class="btn-build-primary">حفظ الإعدادات</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Login & Welcome Screen Glassmorphism Overlay -->
+    <section
+      id="login-overlay"
+      class="login-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="login-title"
+      data-testid="login-overlay"
+    >
+      <div class="login-card">
+        <div class="login-brand-header">
+          <div class="login-voxel-emblem" aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M12 2L20 6.5V15.5L12 20L4 15.5V6.5L12 2Z"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M12 20V11M12 11L20 6.5M12 11L4 6.5"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+          <h2 id="login-title" class="login-title">جزيرة الفوكسل التشاركية</h2>
+          <p class="login-subtitle">
+            ابنِ عالمك ثلاثي الأبعاد بالذكاء الاصطناعي واستكشف إبداعات الآخرين
+          </p>
+        </div>
+
+        <div
+          id="login-invite-banner"
+          class="login-invite-banner hidden"
+          role="status"
+          data-testid="login-invite-banner"
+        ></div>
+
+        <form id="login-form" class="login-form" novalidate>
+          <div class="login-field">
+            <label for="login-name-input" class="login-label">اسم المستكشف / اسم المستخدم</label>
+            <input
+              type="text"
+              id="login-name-input"
+              class="login-pill-input"
+              placeholder="مثال: أحمد المعماري"
+              maxlength="32"
+              autocomplete="nickname"
+              data-testid="login-name-input"
+            />
+          </div>
+
+          <div class="login-field">
+            <label for="login-credential-input" class="login-label">
+              البريد الإلكتروني أو رمز الدخول <span class="login-optional">(اختياري)</span>
+            </label>
+            <input
+              type="text"
+              id="login-credential-input"
+              class="login-pill-input"
+              dir="ltr"
+              placeholder="explorer@voxel.world"
+              maxlength="80"
+              autocomplete="email"
+              data-testid="login-credential-input"
+            />
+          </div>
+
+          <div class="login-field">
+            <span class="login-label">اختر شخصيتك قبل الدخول</span>
+            <div
+              id="login-character-selector"
+              class="login-character-strip"
+              role="radiogroup"
+              aria-label="اختيار الشخصية"
+              data-testid="login-character-selector"
+            ></div>
+          </div>
+
+          <p id="login-error" class="login-error hidden" role="alert" data-testid="login-error"></p>
+
+          <div class="login-actions">
+            <button
+              type="submit"
+              id="btn-login-submit"
+              class="btn-login-primary"
+              data-testid="btn-login-submit"
+            >
+              دخول إلى الجزيرة
+            </button>
+            <button
+              type="button"
+              id="btn-login-guest"
+              class="btn-login-guest"
+              data-testid="btn-login-guest"
+            >
+              الدخول كزائر
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- Non-blocking Toast Feedback -->
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+    <script type="module" src="/js/main.js"></script>
+  </body>
+</html>

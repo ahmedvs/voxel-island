@@ -1,0 +1,6 @@
+{
+  "name": "جزيرة الفوكسل — Voxel Island",
+  "description": "منصة تفاعلية ثلاثية الأبعاد لبناء جزيرة فوكسل عائمة بالذكاء الاصطناعي وتقنية Three.js.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
