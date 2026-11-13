@@ -111,6 +111,8 @@ const dom = {
   btnDemoBuild: document.getElementById('btn-demo-build'),
   settingsModal: document.getElementById('settings-modal'),
   settingsForm: document.getElementById('settings-form'),
+  inputApiKey: document.getElementById('input-api-key'),
+  byokStatusBadge: document.getElementById('byok-status-badge'),
   inputModelId: document.getElementById('input-model-id'),
   btnCloseSettings: document.getElementById('btn-close-settings'),
   btnCancelSettings: document.getElementById('btn-cancel-settings'),
@@ -139,14 +141,31 @@ const dateFormatter = new Intl.DateTimeFormat('ar-EG', {
   minute: '2-digit',
 });
 
-function showToast(message, type = 'info') {
+function showToast(message, type = 'info', actionText = null, onAction = null) {
   const el = document.createElement('div');
   el.className = `toast ${type === 'success' ? 'toast-success' : type === 'error' ? 'toast-error' : ''}`;
-  el.textContent = message;
+  
+  const textSpan = document.createElement('span');
+  textSpan.textContent = message;
+  el.appendChild(textSpan);
+
+  if (actionText && typeof onAction === 'function') {
+    const actionBtn = document.createElement('button');
+    actionBtn.type = 'button';
+    actionBtn.textContent = actionText;
+    actionBtn.style.cssText = 'margin-right: 12px; background: rgba(255,255,255,0.25); border: none; border-radius: 6px; padding: 3px 10px; color: inherit; cursor: pointer; font-weight: 600; font-size: 13px;';
+    actionBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onAction();
+      el.remove();
+    });
+    el.appendChild(actionBtn);
+  }
+
   dom.toastRegion.appendChild(el);
   window.setTimeout(() => {
     el.remove();
-  }, 4200);
+  }, 6500);
 }
 
 function updateStatsUI() {
@@ -746,8 +765,19 @@ function closeInspectionCard() {
 
 function openSettingsModal() {
   dom.inputModelId.value = settings.modelId || 'gemini-4-hydrogen';
+  const savedKey = localStorage.getItem('voxel_gemini_api_key') || '';
+  if (dom.inputApiKey) {
+    dom.inputApiKey.value = savedKey;
+  }
+  if (dom.byokStatusBadge) {
+    if (savedKey.trim()) {
+      dom.byokStatusBadge.classList.remove('hidden');
+    } else {
+      dom.byokStatusBadge.classList.add('hidden');
+    }
+  }
   dom.settingsModal.classList.remove('hidden');
-  window.setTimeout(() => dom.inputModelId.focus(), 40);
+  window.setTimeout(() => dom.inputApiKey?.focus() || dom.inputModelId.focus(), 40);
 }
 
 function closeSettingsModal() {
@@ -822,7 +852,16 @@ async function startConstruction({ useDemo }) {
   } catch (err) {
     sceneEngine.removeConstructionSite(siteId);
     activeConstructionPlots = activeConstructionPlots.filter((s) => s.id !== siteId);
-    showToast(err?.message || 'حدث خطأ أثناء توليد المبنى', 'error');
+    if (err?.missingApiKey || err?.status === 503) {
+      showToast(
+        'مفتاح Gemini API غير مُعيّن. يرجى إدخال مفتاحك في الإعدادات أو استخدام «بناء تجريبي»',
+        'error',
+        'فتح الإعدادات',
+        () => openSettingsModal()
+      );
+    } else {
+      showToast(err?.message || 'حدث خطأ أثناء توليد المبنى', 'error');
+    }
   } finally {
     if (activeConstructionPlots.length === 0) {
       document.body.setAttribute('data-state', 'ready');
@@ -1037,13 +1076,20 @@ dom.settingsModal.addEventListener('click', (e) => {
 
 dom.settingsForm.addEventListener('submit', (e) => {
   e.preventDefault();
+  const apiKeyInput = dom.inputApiKey?.value.trim() || '';
+  if (apiKeyInput) {
+    localStorage.setItem('voxel_gemini_api_key', apiKeyInput);
+  } else {
+    localStorage.removeItem('voxel_gemini_api_key');
+  }
+
   settings = {
     modelId: dom.inputModelId.value.trim() || 'gemini-4-hydrogen',
   };
   saveSettings(settings);
   syncActiveModelBadge();
   closeSettingsModal();
-  showToast('تم حفظ إعدادات النموذج محلياً', 'success');
+  showToast('تم حفظ إعدادات الذكاء الاصطناعي بنجاح', 'success');
 });
 
 dom.btnResetModel.addEventListener('click', () => {

@@ -690,8 +690,35 @@
 
         <form id="settings-form" class="modal-body" novalidate>
           <p class="modal-desc">
-            تعمل طلبات التصميم المعماري بالذكاء الاصطناعي عبر الخادم تلقائياً لجميع الزوار. يمكنك اختيار معرّف نموذج Gemini أو استخدام «بناء تجريبي» في أي وقت.
+            أدخل مفتاح Gemini API الخاص بك (BYOK) أو استخدم معرّف النموذج والوضع التجريبي. المفتاح يُحفظ محلياً في متصفحك فقط.
           </p>
+
+          <div class="form-field">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label for="input-api-key" class="field-label" style="margin-bottom: 0;">مفتاح Gemini API (BYOK)</label>
+              <a
+                href="https://aistudio.google.com/apikey"
+                target="_blank"
+                rel="noopener noreferrer"
+                style="font-size: 13px; color: #1a73e8; text-decoration: none; font-weight: 500;"
+              >
+                Get a free Gemini API Key ↗
+              </a>
+            </div>
+            <input
+              type="password"
+              id="input-api-key"
+              class="field-input"
+              dir="ltr"
+              placeholder="AIzaSy..."
+              autocomplete="off"
+              data-testid="input-api-key"
+            />
+            <div id="byok-status-badge" class="hidden" style="margin-top: 6px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #e6f4ea; color: #137333; font-size: 12px; font-weight: 600;">
+              <span style="width: 8px; height: 8px; border-radius: 50%; background: #34a853;"></span>
+              BYOK Active (Stored locally in your browser)
+            </div>
+          </div>
 
           <div class="form-field">
             <label for="input-model-id" class="field-label">معرّف النموذج (Model ID)</label>

@@ -60,6 +60,7 @@ function getGeminiClient() {
   if (!apiKey || !apiKey.trim()) {
     const err = new Error('يرجى إدخال مفتاح Gemini API في نافذة الإعدادات أو استخدام «بناء تجريبي»');
     err.status = 503;
+    err.missingApiKey = true;
     throw err;
   }
   return new GoogleGenAI({ apiKey: apiKey.trim() });
