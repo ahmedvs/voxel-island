@@ -32,7 +32,8 @@ import {
   saveUserProfile,
 } from './storage.js';
 import { SpatialAudioEngine } from './spatialAudio.js';
-import { IslandRealtimeClient } from './realtimeClient.js';
+import { FirebaseIslandSync, getRoomIdFromUrl } from './firebaseSync.js';
+import { PeerVoiceManager } from './peerVoice.js';
 import { VoxelIslandScene } from './voxelScene.js';
 
 const dom = {
@@ -127,6 +128,7 @@ let inspectedBuildingId = null;
 let activeConstructionPlots = []; // [{ id, gx, gz }]
 let loginHideTimer = 0;
 
+const roomId = getRoomIdFromUrl();
 const inviteInfo = parseInviteParams(window.location.search);
 let pendingInviteSpawn = inviteInfo.hasInvite;
 
@@ -198,7 +200,7 @@ function setCameraMode(mode, options = {}) {
   }
 
   sceneEngine.setCameraMode(nextMode, options);
-  syncLocalRealtimeState();
+  syncLocalState();
 }
 
 function renderCharacterCustomizer() {
@@ -287,7 +289,7 @@ function applyCharacterUpdate(nextConfig) {
   renderCharacterCustomizer();
   renderLoginCharacterSelector();
   syncUserBadgeUI();
-  syncLocalRealtimeState();
+  syncLocalState();
   document.body.dataset.characterPreset = characterConfig.presetId;
 }
 
@@ -388,7 +390,7 @@ function updateMicUI() {
   }
 }
 
-function buildLocalRealtimePayload() {
+function buildLocalPayload() {
   const snap = sceneEngine ? sceneEngine.getLocalWalkSnapshot() : { x: 0, y: 0, z: 11.5, yaw: 0, isSitting: false, visible: false };
   return {
     builderName: userProfile.builderName || 'زائر الجزيرة',
@@ -399,25 +401,16 @@ function buildLocalRealtimePayload() {
   };
 }
 
-function syncLocalRealtimeState() {
+function syncLocalState() {
   if (!userProfile.loggedIn) return;
-  realtimeClient.updateLocalProfileAndState(buildLocalRealtimePayload());
-}
-
-function ensureRealtimeConnected() {
-  if (!userProfile.loggedIn) return;
-  if (!realtimeClient.ws || realtimeClient.ws.readyState === WebSocket.CLOSED) {
-    realtimeClient.connect(buildLocalRealtimePayload());
-  } else {
-    syncLocalRealtimeState();
-  }
+  firebaseSync.updatePlayerState(buildLocalPayload());
 }
 
 function findInviterSpawnTarget() {
   if (!inviteInfo.hasInvite) return null;
   const inviterLower = (inviteInfo.inviterName || '').trim().toLowerCase();
   if (inviterLower) {
-    for (const peer of realtimeClient.remotePeers.values()) {
+    for (const peer of realtimePeersMap.values()) {
       if ((peer.builderName || '').trim().toLowerCase() === inviterLower) {
         return { x: peer.x, z: peer.z };
       }
@@ -426,7 +419,117 @@ function findInviterSpawnTarget() {
   return { x: 0, z: 11.5 };
 }
 
-function enterIslandSession({ builderName, credential, isGuest }) {
+const remotePeersMap = new Map();
+
+const spatialAudio = new SpatialAudioEngine({
+  onSpeakingChange: (speaking) => {
+    sceneEngine?.setLocalSpeaking(speaking);
+    firebaseSync?.sendSpeakingState(speaking, spatialAudio.micEnabled);
+    updateMicUI();
+  },
+  onMicLevel: (level) => {
+    if (dom.micLevelFill) {
+      dom.micLevelFill.style.width = `${Math.round(Math.min(1, Math.max(0, level)) * 100)}%`;
+    }
+  },
+  onError: (err) => {
+    showToast(err?.message || 'تعذر معالجة الصوت المحيطي', 'error');
+  },
+});
+
+const firebaseSync = new FirebaseIslandSync({
+  roomId,
+  onPeersSnapshot: (peers) => {
+    remotePeersMap.clear();
+    for (const p of peers) {
+      if (p.id) remotePeersMap.set(p.id, p);
+      if (p.peerVoiceId) {
+        peerVoice.callPeer(p.peerVoiceId);
+      }
+    }
+    sceneEngine?.syncRemotePeers(peers);
+  },
+  onBuildingsSnapshot: (remoteBuildings) => {
+    if (Array.isArray(remoteBuildings) && remoteBuildings.length > 0) {
+      buildings = remoteBuildings;
+      saveIslandBuildings(buildings);
+      sceneEngine?.syncBuildings(buildings);
+      updateStatsUI();
+    }
+  },
+});
+
+const peerVoice = new PeerVoiceManager({
+  spatialAudio,
+  roomId,
+  onPeerVoiceState: (peerVoiceId, active) => {
+    // Voice state handler
+  },
+});
+
+firebaseSync.listenPlayers((peers) => {
+  remotePeersMap.clear();
+  for (const p of peers) {
+    if (p.id) remotePeersMap.set(p.id, p);
+    if (p.peerVoiceId) {
+      peerVoice.callPeer(p.peerVoiceId);
+    }
+  }
+  sceneEngine?.syncRemotePeers(peers);
+});
+
+firebaseSync.listenBuildings((remoteList) => {
+  if (Array.isArray(remoteList) && remoteList.length > 0) {
+    buildings = remoteList;
+    saveIslandBuildings(buildings);
+    sceneEngine?.syncBuildings(buildings);
+    updateStatsUI();
+  }
+});
+
+const sceneEngine = new VoxelIslandScene(dom.canvasContainer, {
+  characterConfig,
+  characterName: userProfile.builderName || 'زائر الجزيرة',
+  initialWelcomeShowcase: !userProfile.loggedIn,
+  onSelectPlot: (gx, gz) => openPlotSelector(gx, gz),
+  onInvalidPlot: (reason) => showToast(reason || 'لا يمكن البناء في هذا الموقع', 'error'),
+  onSelectBuilding: (buildingId) => openInspectionCard(buildingId),
+  onNearSeatChange: (seatState) => updateSitPromptPill(seatState),
+  onLocalTransform: (snap) => {
+    if (!userProfile.loggedIn) return;
+    firebaseSync.updatePlayerState({
+      builderName: userProfile.builderName || 'زائر الجزيرة',
+      characterConfig,
+      ...snap,
+      speaking: spatialAudio.isSpeaking,
+      micActive: spatialAudio.micEnabled,
+    });
+  },
+  onSpatialFrame: ({ listenerX, listenerY, listenerZ, forwardX, forwardY, forwardZ, remotePeers }) => {
+    spatialAudio.updateListenerTransform(listenerX, listenerY, listenerZ, forwardX, forwardY, forwardZ);
+    for (const [peerId, entry] of remotePeers.entries()) {
+      spatialAudio.updateRemotePeerPosition(peerId, entry.curX, entry.curY, entry.curZ);
+    }
+  },
+});
+
+sceneEngine.syncBuildings(buildings);
+updateStatsUI();
+syncActiveModelBadge();
+renderCharacterCustomizer();
+renderLoginCharacterSelector();
+syncUserBadgeUI();
+updateMicUI();
+document.body.dataset.characterPreset = characterConfig.presetId;
+
+if (inviteInfo.hasInvite && dom.loginInviteBanner) {
+  dom.loginInviteBanner.textContent = inviteInfo.inviterName
+    ? `تمت دعوتك بواسطة ${inviteInfo.inviterName} للانضمام إلى الجزيرة!`
+    : 'تمت دعوتك للانضمام إلى جزيرة الفوكسل ومقهاها المركزي!';
+  dom.loginInviteBanner.classList.remove('hidden');
+}
+
+async function enterIslandSession({ builderName, credential, isGuest }) {
   window.clearTimeout(loginHideTimer);
   userProfile = saveUserProfile({
     loggedIn: true,
@@ -446,7 +549,14 @@ function enterIslandSession({ builderName, credential, isGuest }) {
     dom.loginOverlay.classList.remove('is-closing');
   }, 380);
 
-  ensureRealtimeConnected();
+  let peerVoiceId = null;
+  try {
+    peerVoiceId = await peerVoice.init(builderName);
+  } catch (err) {
+    console.warn('PeerVoice init warning:', err);
+  }
+
+  await firebaseSync.registerPlayer(buildLocalPayload(), peerVoiceId);
 
   if (pendingInviteSpawn) {
     pendingInviteSpawn = false;
@@ -467,9 +577,11 @@ function returnToLoginOverlay() {
   window.clearTimeout(loginHideTimer);
   if (spatialAudio.micEnabled) {
     spatialAudio.disableMicrophone();
-    realtimeClient.setLocalAudioStream(null);
+    peerVoice.setLocalStream(null);
     updateMicUI();
   }
+  firebaseSync.removePlayer();
+  peerVoice.dispose();
   userProfile = logoutUserProfile();
   closeInspectionCard();
   closePlotSelector();
@@ -496,6 +608,27 @@ function returnToLoginOverlay() {
 
   dom.loginOverlay.classList.remove('hidden', 'is-closing');
   window.setTimeout(() => dom.loginNameInput?.focus(), 60);
+}
+
+if (userProfile.loggedIn) {
+  document.body.setAttribute('data-auth', 'authenticated');
+  dom.loginOverlay.classList.add('hidden');
+  peerVoice.init(userProfile.builderName).then((id) => {
+    firebaseSync.registerPlayer(buildLocalPayload(), id);
+  }).catch(() => {
+    firebaseSync.registerPlayer(buildLocalPayload(), null);
+  });
+
+  if (pendingInviteSpawn) {
+    pendingInviteSpawn = false;
+    setCameraMode('walk', { customSpawn: findInviterSpawnTarget() });
+  }
+} else {
+  document.body.setAttribute('data-auth', 'welcome');
+  if (dom.loginNameInput && !userProfile.isGuest && userProfile.builderName) {
+    dom.loginNameInput.value = userProfile.builderName;
+  }
+  dom.loginOverlay.classList.remove('hidden');
 }
 
 function openCharacterPopover() {
@@ -535,7 +668,7 @@ function closeAudioPopover() {
 
 function refreshInviteShareContent() {
   const inviter = userProfile.builderName || 'مستكشف الجزيرة';
-  const url = buildInviteUrl(window.location.origin, window.location.pathname, inviter, 'cafe');
+  const url = buildInviteUrl(window.location.origin, window.location.pathname, inviter, roomId);
   if (dom.inviteUrlInput) {
     dom.inviteUrlInput.value = url;
   }
@@ -621,90 +754,6 @@ function closeSettingsModal() {
   dom.settingsModal.classList.add('hidden');
 }
 
-const spatialAudio = new SpatialAudioEngine({
-  onSpeakingChange: (speaking) => {
-    sceneEngine?.setLocalSpeaking(speaking);
-    realtimeClient?.sendSpeakingState(speaking, spatialAudio.micEnabled);
-    updateMicUI();
-  },
-  onMicLevel: (level) => {
-    if (dom.micLevelFill) {
-      dom.micLevelFill.style.width = `${Math.round(Math.min(1, Math.max(0, level)) * 100)}%`;
-    }
-  },
-  onError: (err) => {
-    showToast(err?.message || 'تعذر معالجة الصوت المحيطي', 'error');
-  },
-});
-
-const realtimeClient = new IslandRealtimeClient({
-  spatialAudio,
-  onPeersSnapshot: (peers) => sceneEngine?.syncRemotePeers(peers),
-  onPeerJoined: (peer) => sceneEngine?.upsertRemotePeer(peer),
-  onPeerUpdated: (peer) => sceneEngine?.upsertRemotePeer(peer),
-  onPeerLeft: (peerId) => sceneEngine?.removeRemotePeer(peerId),
-  onPeerSpeaking: (peerId, speaking) => sceneEngine?.updateRemotePeerSpeaking(peerId, speaking),
-});
-
-const sceneEngine = new VoxelIslandScene(dom.canvasContainer, {
-  characterConfig,
-  characterName: userProfile.builderName || 'زائر الجزيرة',
-  initialWelcomeShowcase: !userProfile.loggedIn,
-  onSelectPlot: (gx, gz) => openPlotSelector(gx, gz),
-  onInvalidPlot: (reason) => showToast(reason || 'لا يمكن البناء في هذا الموقع', 'error'),
-  onSelectBuilding: (buildingId) => openInspectionCard(buildingId),
-  onNearSeatChange: (seatState) => updateSitPromptPill(seatState),
-  onLocalTransform: (snap) => {
-    if (!userProfile.loggedIn) return;
-    realtimeClient.sendMoveThrottled({
-      builderName: userProfile.builderName || 'زائر الجزيرة',
-      characterConfig,
-      ...snap,
-      speaking: spatialAudio.isSpeaking,
-      micActive: spatialAudio.micEnabled,
-    });
-  },
-  onSpatialFrame: ({ listenerX, listenerY, listenerZ, forwardX, forwardY, forwardZ, remotePeers }) => {
-    spatialAudio.updateListenerTransform(listenerX, listenerY, listenerZ, forwardX, forwardY, forwardZ);
-    for (const [peerId, entry] of remotePeers.entries()) {
-      spatialAudio.updateRemotePeerPosition(peerId, entry.curX, entry.curY, entry.curZ);
-    }
-  },
-});
-
-sceneEngine.syncBuildings(buildings);
-updateStatsUI();
-syncActiveModelBadge();
-renderCharacterCustomizer();
-renderLoginCharacterSelector();
-syncUserBadgeUI();
-updateMicUI();
-document.body.dataset.characterPreset = characterConfig.presetId;
-
-if (inviteInfo.hasInvite && dom.loginInviteBanner) {
-  dom.loginInviteBanner.textContent = inviteInfo.inviterName
-    ? `تمت دعوتك بواسطة ${inviteInfo.inviterName} للانضمام إلى الجزيرة!`
-    : 'تمت دعوتك للانضمام إلى جزيرة الفوكسل ومقهاها المركزي!';
-  dom.loginInviteBanner.classList.remove('hidden');
-}
-
-if (userProfile.loggedIn) {
-  document.body.setAttribute('data-auth', 'authenticated');
-  dom.loginOverlay.classList.add('hidden');
-  ensureRealtimeConnected();
-  if (pendingInviteSpawn) {
-    pendingInviteSpawn = false;
-    setCameraMode('walk', { customSpawn: findInviterSpawnTarget() });
-  }
-} else {
-  document.body.setAttribute('data-auth', 'welcome');
-  if (dom.loginNameInput && !userProfile.isGuest && userProfile.builderName) {
-    dom.loginNameInput.value = userProfile.builderName;
-  }
-  dom.loginOverlay.classList.remove('hidden');
-}
-
-// Construction Workflow (Client-Side BYOK Gemini or Demo)
 async function startConstruction({ useDemo }) {
   if (!selectedPlot) {
     showToast('اختر موقعاً فارغاً على الجزيرة أولاً', 'error');
@@ -762,6 +811,7 @@ async function startConstruction({ useDemo }) {
 
     buildings = [...buildings, newBuilding];
     saveIslandBuildings(buildings);
+    firebaseSync.saveBuilding(newBuilding);
 
     sceneEngine.removeConstructionSite(siteId);
     activeConstructionPlots = activeConstructionPlots.filter((s) => s.id !== siteId);
@@ -780,7 +830,6 @@ async function startConstruction({ useDemo }) {
   }
 }
 
-// Camera Mode, Character Customizer & Add Structure Pill Events
 dom.btnModePan.addEventListener('click', () => setCameraMode('pan'));
 dom.btnModeOrbit.addEventListener('click', () => setCameraMode('orbit'));
 dom.btnModeWalk.addEventListener('click', () => setCameraMode('walk'));
@@ -803,8 +852,8 @@ dom.sitPromptPill?.addEventListener('click', () => {
 dom.btnMic?.addEventListener('click', async () => {
   try {
     const enabled = await spatialAudio.toggleMicrophone();
-    await realtimeClient.setLocalAudioStream(enabled ? spatialAudio.micStream : null);
-    realtimeClient.sendSpeakingState(spatialAudio.isSpeaking, enabled);
+    peerVoice.setLocalStream(enabled ? spatialAudio.micStream : null);
+    firebaseSync.sendSpeakingState(spatialAudio.isSpeaking, enabled);
     updateMicUI();
     showToast(
       enabled
@@ -835,7 +884,7 @@ dom.btnMicTest?.addEventListener('click', async () => {
       spatialAudio.stopMicTest();
     } else {
       await spatialAudio.startMicTest();
-      await realtimeClient.setLocalAudioStream(spatialAudio.micStream);
+      peerVoice.setLocalStream(spatialAudio.micStream);
     }
     updateMicUI();
   } catch (err) {
@@ -901,7 +950,6 @@ dom.btnAddStructure.addEventListener('click', () => {
   sceneEngine.focusOnPoint(plot.gx, plot.gz, 2.5);
 });
 
-// Build Form & Quick Ideas
 dom.buildForm.addEventListener('submit', (e) => {
   e.preventDefault();
   startConstruction({ useDemo: false });
@@ -928,6 +976,7 @@ dom.btnLikeBuilding.addEventListener('click', () => {
     if (b.id !== inspectedBuildingId) return b;
     const nextLiked = !b.likedByMe;
     const nextLikes = Math.max(0, (b.likes || 0) + (nextLiked ? 1 : -1));
+    firebaseSync.updateBuildingLikes(b.id, nextLikes, nextLiked);
     return { ...b, likedByMe: nextLiked, likes: nextLikes };
   });
   saveIslandBuildings(buildings);
@@ -950,6 +999,7 @@ dom.btnDeleteBuilding.addEventListener('click', () => {
   const target = buildings.find((item) => item.id === inspectedBuildingId);
   buildings = buildings.filter((item) => item.id !== inspectedBuildingId);
   saveIslandBuildings(buildings);
+  firebaseSync.removeBuilding(inspectedBuildingId);
   closeInspectionCard();
   sceneEngine.syncBuildings(buildings);
   updateStatsUI();
@@ -1027,6 +1077,9 @@ dom.inputImportFile.addEventListener('change', async (e) => {
     }
     buildings = imported;
     saveIslandBuildings(buildings);
+    for (const b of buildings) {
+      firebaseSync.saveBuilding(b);
+    }
     closeInspectionCard();
     closePlotSelector();
     sceneEngine.syncBuildings(buildings, new Set(buildings.map((b) => b.id)));
